@@ -42,6 +42,7 @@ const _approvedLoadExternalJSList = [
   'tncId',
   'ftrackId',
   'id5',
+  'oneId'
 ];
 
 /**

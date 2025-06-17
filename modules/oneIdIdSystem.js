@@ -9,6 +9,7 @@ import { logError, logInfo } from "../src/utils.js";
 import { submodule } from "../src/hook.js";
 import { MODULE_TYPE_UID } from "../src/activities/modules.js";
 import { getStorageManager } from "../src/storageManager.js";
+import { loadExternalScript } from '../src/adloader.js';
 
 /**
  * @typedef {import('../modules/userId/index.js').Submodule} Submodule
@@ -18,6 +19,8 @@ import { getStorageManager } from "../src/storageManager.js";
  */
 
 const MODULE_NAME = "oneId";
+const ONE_ID_SDK_URL = "https://cdn.oneid.live/sdk/oneIDSDK.js"
+
 export const storage = getStorageManager({
   moduleName: MODULE_NAME,
   moduleType: MODULE_TYPE_UID,
@@ -55,42 +58,34 @@ const createOneIdApi = (sdk) => {
   };
 };
 
-let loadPromise;
-const loadSDK = (w) => {
-  if (!loadPromise) {
-    loadPromise = new Promise((resolve, reject) => {
-      // In case it already loaded
-      if (w.OneIdSDK && w.OneIdSDK.firstParty) {
-        resolve(w.OneIdSDK);
-        return;
-      }
-      // In case it's not loaded yet
-      const oneIDSDKScript = document.createElement("script");
-      oneIDSDKScript.src = "https://cdn.oneid.live/sdk/oneIDSDK.js";
-      oneIDSDKScript.onabort = () => reject(Error("oneIDSDK loading aborted"));
-      oneIDSDKScript.oncancel = () =>
-        reject(Error("oneIDSDK loading canceled"));
-      oneIDSDKScript.onload = () => {
-        try {
-          w.OneIdSDK.firstParty.init(
-            {
-              fpVersion: "v4",
-              firstPartyURL: "",
-            },
-            () => {
-              if (w.OneIdSDK) resolve(w.OneIdSDK);
-              else reject(Error("OneIdSDK not loaded"));
-            }
-          );
-        } catch (error) {
-          reject(new Error("onload error: " + error.message));
+const loadSDK = async (w) => {
+  await new Promise((resolve) => {
+    // In case it already loaded
+    if (w.OneIdSDK && w.OneIdSDK.firstParty) {
+      resolve(w.OneIdSDK);
+      return;
+    }
+    // In case it's not loaded yet
+    loadExternalScript(ONE_ID_SDK_URL, MODULE_TYPE_UID, MODULE_NAME, resolve);
+  });
+
+  return new Promise((resolve, reject) => {
+    try {
+      w.OneIdSDK.firstParty.init(
+        {
+          fpVersion: "v4",
+          firstPartyURL: "",
+        },
+        () => {
+          if (w.OneIdSDK) resolve(w.OneIdSDK);
+          else reject(Error("OneIdSDK not loaded"));
         }
-      };
-      document.body.appendChild(oneIDSDKScript);
-    });
-  }
-  return loadPromise;
-};
+      );
+    } catch (error) {
+      reject(new Error("onload error: " + error.message));
+    }
+  });
+}
 
 /**
  * @param {Object} [config]
