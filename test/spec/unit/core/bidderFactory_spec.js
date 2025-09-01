@@ -15,25 +15,24 @@ import {decorateAdUnitsWithNativeParams} from '../../../../src/native.js';
 import * as activityRules from 'src/activities/rules.js';
 import {MODULE_TYPE_BIDDER} from '../../../../src/activities/modules.js';
 import {ACTIVITY_TRANSMIT_TID, ACTIVITY_TRANSMIT_UFPD} from '../../../../src/activities/activities.js';
+import {getGlobal} from '../../../../src/prebidGlobal.js';
 
 const CODE = 'sampleBidder';
 const MOCK_BIDS_REQUEST = {
   bids: [
     {
       bidId: 1,
-      auctionId: 'first-bid-id',
       adUnitCode: 'mock/placement',
       params: {
         param: 5
-      }
+      },
     },
     {
       bidId: 2,
-      auctionId: 'second-bid-id',
       adUnitCode: 'mock/placement2',
       params: {
         badParam: 6
-      }
+      },
     }
   ]
 }
@@ -42,7 +41,7 @@ before(() => {
   hook.ready();
 });
 
-let wrappedCallback = config.callbackWithBidder(CODE);
+const wrappedCallback = config.callbackWithBidder(CODE);
 
 describe('bidderFactory', () => {
   let onTimelyResponseStub;
@@ -236,20 +235,27 @@ describe('bidderFactory', () => {
         });
 
         Object.entries({
-          'be hidden': false,
-          'not be hidden': true,
-        }).forEach(([t, allowed]) => {
-          const expectation = allowed ? (val) => expect(val).to.exist : (val) => expect(val).to.not.exist;
-
-          function checkBidRequest(br) {
-            ['auctionId', 'transactionId'].forEach((prop) => expectation(br[prop]));
-          }
-
-          function checkBidderRequest(br) {
-            expectation(br.auctionId);
-            br.bids.forEach(checkBidRequest);
-          }
-
+          'be hidden': {
+            allowed: false,
+            checkBidderRequest(br) {
+              expect(br.auctionId).to.not.exist;
+            },
+            checkBidRequest(br) {
+              expect(br.auctionId).to.not.exist;
+              expect(br.transactionId).to.not.exist;
+            },
+          },
+          'be an alias to the bidder specific tid': {
+            allowed: true,
+            checkBidderRequest(br) {
+              expect(br.auctionId).to.eql('bidder-tid');
+            },
+            checkBidRequest(br) {
+              expect(br.auctionId).to.eql('bidder-tid');
+              expect(br.transactionId).to.eql('bidder-ext-tid');
+            },
+          },
+        }).forEach(([t, {allowed, checkBidderRequest, checkBidRequest}]) => {
           it(`should ${t} from the spec logic when the transmitTid activity is${allowed ? '' : ' not'} allowed`, () => {
             spec.isBidRequestValid.callsFake(br => {
               checkBidRequest(br);
@@ -267,12 +273,27 @@ describe('bidderFactory', () => {
             bidder.callBids({
               bidderCode: 'mockBidder',
               auctionId: 'aid',
+              ortb2: {
+                source: {
+                  tid: 'bidder-tid'
+                }
+              },
               bids: [
                 {
                   adUnitCode: 'mockAU',
                   bidId: 'bid',
                   transactionId: 'tid',
-                  auctionId: 'aid'
+                  auctionId: 'aid',
+                  ortb2: {
+                    source: {
+                      tid: 'bidder-tid'
+                    },
+                  },
+                  ortb2Imp: {
+                    ext: {
+                      tid: 'bidder-ext-tid'
+                    }
+                  }
                 }
               ]
             }, addBidResponseStub, doneStub, ajaxStub, onTimelyResponseStub, wrappedCallback);
@@ -503,11 +524,11 @@ describe('bidderFactory', () => {
       describe('browsingTopics ajax option', () => {
         let transmitUfpdAllowed, bidder, origBS;
         before(() => {
-          origBS = window.$$PREBID_GLOBAL$$.bidderSettings;
+          origBS = getGlobal().bidderSettings;
         })
 
         after(() => {
-          window.$$PREBID_GLOBAL$$.bidderSettings = origBS;
+          getGlobal().bidderSettings = origBS;
         });
 
         beforeEach(() => {
@@ -530,7 +551,8 @@ describe('bidderFactory', () => {
           ]);
           bidder.callBids(MOCK_BIDS_REQUEST, addBidResponseStub, doneStub, ajaxStub, onTimelyResponseStub, wrappedCallback);
           sinon.assert.calledWith(ajaxStub, 'url', sinon.match.any, sinon.match.any, sinon.match({
-            browsingTopics: false
+            browsingTopics: false,
+            suppressTopicsEnrollmentWarning: true
           }));
         });
 
@@ -541,7 +563,7 @@ describe('bidderFactory', () => {
         }).forEach(([t, [topicsHeader, enabled]]) => {
           describe(`when bidderSettings.topicsHeader is ${t}`, () => {
             beforeEach(() => {
-              window.$$PREBID_GLOBAL$$.bidderSettings = {
+              getGlobal().bidderSettings = {
                 [CODE]: {
                   topicsHeader: topicsHeader
                 }
@@ -549,7 +571,7 @@ describe('bidderFactory', () => {
             });
 
             afterEach(() => {
-              delete window.$$PREBID_GLOBAL$$.bidderSettings[CODE];
+              delete getGlobal().bidderSettings[CODE];
             });
 
             Object.entries({
@@ -593,7 +615,7 @@ describe('bidderFactory', () => {
                     url,
                     sinon.match.any,
                     sinon.match.any,
-                    sinon.match({browsingTopics: shouldBeSet})
+                    sinon.match({browsingTopics: shouldBeSet, suppressTopicsEnrollmentWarning: true})
                   );
                 });
               });
@@ -1192,7 +1214,7 @@ describe('bidderFactory', () => {
     let ajaxStub;
     let logErrorSpy;
 
-    let bids = [{
+    const bids = [{
       'ad': 'creative',
       'cpm': '1.99',
       'width': 300,
@@ -1237,7 +1259,7 @@ describe('bidderFactory', () => {
     afterEach(function () {
       ajaxStub.restore();
       logErrorSpy.restore();
-      indexStub.restore;
+      indexStub.restore();
     });
 
     if (FEATURES.NATIVE) {
@@ -1249,7 +1271,7 @@ describe('bidderFactory', () => {
           }
         }]
         decorateAdUnitsWithNativeParams(adUnits);
-        let bidRequest = {
+        const bidRequest = {
           bids: [{
             bidId: '1',
             auctionId: 'first-bid-id',
@@ -1262,7 +1284,7 @@ describe('bidderFactory', () => {
           }]
         };
 
-        let bids1 = Object.assign({},
+        const bids1 = Object.assign({},
           bids[0],
           {
             'mediaType': 'native',
@@ -1291,7 +1313,7 @@ describe('bidderFactory', () => {
           },
         }];
         decorateAdUnitsWithNativeParams(adUnits);
-        let bidRequest = {
+        const bidRequest = {
           bids: [{
             bidId: '1',
             auctionId: 'first-bid-id',
@@ -1303,7 +1325,7 @@ describe('bidderFactory', () => {
             mediaType: 'native',
           }]
         };
-        let bids1 = Object.assign({},
+        const bids1 = Object.assign({},
           bids[0],
           {
             bidderCode: CODE,
@@ -1332,7 +1354,7 @@ describe('bidderFactory', () => {
           video: {context: 'outstream'}
         }
       }]
-      let bidRequest = {
+      const bidRequest = {
         bids: [{
           bidId: '1',
           auctionId: 'first-bid-id',
@@ -1344,7 +1366,7 @@ describe('bidderFactory', () => {
         }]
       };
 
-      let bids1 = Object.assign({},
+      const bids1 = Object.assign({},
         bids[0],
         {
           bidderCode: CODE,
@@ -1364,7 +1386,7 @@ describe('bidderFactory', () => {
     });
 
     it('should add banner bids that have no width or height but single adunit size', function () {
-      let bidRequest = {
+      const bidRequest = {
         bids: [{
           bidder: CODE,
           bidId: '1',
@@ -1377,7 +1399,7 @@ describe('bidderFactory', () => {
         }]
       };
       bidderRequests = [bidRequest];
-      let bids1 = Object.assign({},
+      const bids1 = Object.assign({},
         bids[0],
         {
           width: undefined,
@@ -1396,7 +1418,7 @@ describe('bidderFactory', () => {
     });
 
     it('should disregard auctionId/transactionId set by the adapter', () => {
-      let bidderRequest = {
+      const bidderRequest = {
         bids: [{
           bidder: CODE,
           bidId: '1',
@@ -1736,7 +1758,7 @@ describe('bidderFactory', () => {
     let debugTurnedOnStub;
 
     before(() => {
-      origBS = window.$$PREBID_GLOBAL$$.bidderSettings;
+      origBS = getGlobal().bidderSettings;
     });
 
     beforeEach(() => {
@@ -1771,7 +1793,7 @@ describe('bidderFactory', () => {
       if (doneStub.restore) doneStub.restore();
       getParameterByNameStub.restore();
       debugTurnedOnStub.restore();
-      window.$$PREBID_GLOBAL$$.bidderSettings = origBS;
+      getGlobal().bidderSettings = origBS;
     });
 
     it('should send a gzip compressed payload when gzip is supported and enabled', function (done) {

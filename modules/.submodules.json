@@ -4,6 +4,7 @@
       "33acrossIdSystem",
       "admixerIdSystem",
       "adqueryIdSystem",
+      "adplusIdSystem",
       "adriverIdSystem",
       "adtelligentIdSystem",
       "amxIdSystem",
@@ -65,7 +66,7 @@
     ],
     "adpod": [
       "freeWheelAdserverVideo",
-      "dfpAdpod"
+      "gamAdpod"
     ],
     "rtdModule": [
       "1plusXRtdProvider",
@@ -84,6 +85,7 @@
       "blueconicRtdProvider",
       "brandmetricsRtdProvider",
       "browsiRtdProvider",
+      "chromeAiRtdProvider",
       "cleanioRtdProvider",
       "confiantRtdProvider",
       "contxtfulRtdProvider",
@@ -122,6 +124,7 @@
       "raynRtdProvider",
       "reconciliationRtdProvider",
       "relevadRtdProvider",
+      "scope3RtdProvider",
       "semantiqRtdProvider",
       "sirdataRtdProvider",
       "symitriDapRtdProvider",
